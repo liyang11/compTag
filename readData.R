@@ -32,6 +32,7 @@ if(excludeSites){
 }
 
 lapply(dat, dim)
+ntag <- nrow(dat$tag)
 nrec <- nrow(dat$rec)
 ncat <- nrow(dat$cat) 
 
@@ -179,9 +180,18 @@ age_n_gjka <- 25*dat$age$p_perc #old logEpart
 
 
 # **************************** Part 2
+ind_tag_i6 <- rep(NA, nrow(dat$tag))
+for(i0 in 1:nrow(dat$tag)){ #********* vectorize for tag data
+  i <- dat$tag$tag_Y[i0]
+  a <- dat$tag$agep[i0]
+  k <- dat$tag$tag_basin[i0]
+  tmp1 <- array(0, c(I,A,K)); tmp1[i,a,k] <- 1 # to match P
+  ind_tag_i6[i0] <- which(tmp1==1) 
+}
+
 # vectorize multiple indices for rec+cat data to avoid for loop
-ind_rec_KJAG <- ind_rec_KJA <- ind_rec_JK <- rep(NA, nrow(dat$rec)) #ind_rec_KKAJ <- : I believe we no longer need it
-for(i0 in 1:nrow(dat$rec)){
+ind_rec_KJAG <- ind_rec_KJA <- ind_rec_JK <- ind_rec_i6 <- rep(NA, nrow(dat$rec)) #ind_rec_KKAJ <- : I believe we no longer need it
+for(i0 in 1:nrow(dat$rec)){ #********* vectorize for rec data
   i <- dat$rec$tag_Y[i0]
   j <- dat$rec$rec_Y[i0]
   k <- dat$rec$tag_basin[i0]
@@ -198,6 +208,8 @@ for(i0 in 1:nrow(dat$rec)){
   ind_rec_KJAG[i0] <- which(tmp1==1)
   tmp1 <- array(0, c(K1,J,A)); tmp1[k1,j,a1] <- 1
   ind_rec_KJA[i0] <- which(tmp1==1) 
+  tmp1 <- array(0, c(I,A,K,G,J,K1)); tmp1[i,a,k,g,j,k1] <- 1 # to match P
+  ind_rec_i6[i0] <- which(tmp1==1) 
 #  tmp1 <- array(0, c(K,K1,A,J)); tmp1[k,k1,a1,j] <- 1
 #  ind_rec_KKAJ[i0] <- which(tmp1==1)
 }
@@ -238,12 +250,12 @@ tag_dbIAK <- tag_rec[,1:3] #tag_Y,agep,tag_basin
 # save environmental variable
 E <- list(
  I=I, A=A, K=K, J=J, G=G, K1=K1, J2=J2, K2=K2, K0=K0,
- nrec=nrec, ncat=ncat, agevec=as.numeric(agevec),
- tag_iak=tag_iak, tag_noRec=tag_noRec, ind_rec2tag=ind_rec2tag,
+ ntag=ntag, nrec=nrec, ncat=ncat, agevec=as.numeric(agevec),
+ tag_iak=tag_iak, tag_noRec=tag_noRec, ind_rec2tag=ind_rec2tag, ind_tag_i6=ind_tag_i6,
  tag_dbIAK=tag_dbIAK, 
  tag_tot=tag_rec$T, #only need for simulation 
  rec_levels=lev$rec, #only need for initials using load('Inits1')
- rec_R=as.numeric(dat$rec$R), rec_IJKK1AG=rec_IJKK1AG, rec_phi_ij=rec_phi_ij, rec_delta_gjk=as.numeric(rec_delta_gjk), rec_iak=rec_iak, rec_lags=as.numeric(rec_lags), ind_rec_KJAG=ind_rec_KJAG, ind_rec_KJA=ind_rec_KJA, ind_rec_JK=ind_rec_JK, 
+ rec_R=as.numeric(dat$rec$R), rec_IJKK1AG=rec_IJKK1AG, rec_phi_ij=rec_phi_ij, rec_delta_gjk=as.numeric(rec_delta_gjk), rec_iak=rec_iak, rec_lags=as.numeric(rec_lags), ind_rec_KJAG=ind_rec_KJAG, ind_rec_KJA=ind_rec_KJA, ind_rec_JK=ind_rec_JK, ind_rec_i6=ind_rec_i6, 
  cat_KJG=cat_KJG, log_cat_catch=log_cat_catch, cat_delta_gjk=as.numeric(cat_delta_gjk), cat_effort=as.numeric(cat_effort), cat_R_tot=as.numeric(cat_R_tot), cat_R_um=as.numeric(cat_R_um), ind_cat_positive=ind_cat_positive, ind_cat_JK=ind_cat_JK, 
  age_n_gjka=as.numeric(age_n_gjka), ind_age_KJGA=ind_age_KJGA, ind_age_KJG=ind_age_KJG
 )

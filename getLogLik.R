@@ -3,7 +3,7 @@
 getLogLik <- function(x, E, comp=c(1:4), model=1){
   
   flags <- E$flags; lbs <- E$lbs; ubs <- E$ubs 
-  J <- E$J; K <- E$K; A <- E$A; K1 <- E$K1; K0 <- E$K0; J2 <- E$J2; K2 <- E$K2; G <- E$G 
+  I <- E$I; J <- E$J; K <- E$K; A <- E$A; K1 <- E$K1; K0 <- E$K0; J2 <- E$J2; K2 <- E$K2; G <- E$G
 
   # now translate parameter vector into individual parameters
   lambda_jk <- matrix(x[flags==1], J2, K2)
@@ -54,106 +54,86 @@ getLogLik <- function(x, E, comp=c(1:4), model=1){
   Fs <- array(0, c(K1,J,A,G)) #KJAG
   for(i in 1:E$ncat) Fs[E$cat_KJG[i,1], E$cat_KJG[i,2], ,E$cat_KJG[i,3]] <- v_a * (q_jk[E$cat_KJG[i,2],E$cat_KJG[i,1]] * E$cat_effort[i]) #v_a*f_jgk  
   
-  
   Fs_sumOverG <- apply(Fs, c(1:3),'sum')
   S <- exp(-(Fs_sumOverG + M_jak))
-  
-  
-  #tmp <- matrix(NA,J,K); for(i in 1:nrow(dat$cat)) tmp[dat$cat$year[i],dat$cat$basin[i]] <- 1 #no NA
-  
-  
   nu <- array(nu0, c(G,J,K)) #this is CV
-  
   
   loglik <- numeric(4)
   
- if(any(comp==1)){
-  #============================ compute L1
-  # next compute new columns for P for foo2 below 
-  P <- E$rec_phi_ij*(E$rec_delta_gjk+(1-E$rec_delta_gjk)*lambda_jk[E$ind_rec_JK])
+  if(any(comp==1)){ #************  compute L1 starts
+
+   # construct P-array
+   P <- array(0, c(I,A,K,G,J,K1))
+   phiFun <- function(x) return(1-0.31/(1+exp(8.52-x)))
+   
+   #******** We don't need to calculate P at iak where there is no released fish in real data because R and T_noRecapture will be both 0, no contribution to likelihood
+   # cat_gjk_raw <- paste(E$cat_KJG$gear,E$cat_KJG$year,E$cat_KJG$basin,sep='_')
+#   for(i in 1:I){for(a in 1:A){for(k in 1:K){ #loop iak starts
+#    ind1 <- which(E$tag_iak==paste(i,a,k,sep='_'))
+#    if(length(ind1)>0){ 
     
- # #-------------------- compute P using model 1    
-  # add Delta, Pi and U part
-  P <- P * Fs[E$ind_rec_KJAG] *(1-S[E$ind_rec_KJA])/(Fs_sumOverG[E$ind_rec_KJA]+M_jak[E$ind_rec_KJA])
-  
-  #P[which(lags==0)] <- P[which(lags==0)]*Pi[ind_rec_0]
-  
-  for(i0 in 1:E$nrec){
-    i <- E$rec_IJKK1AG[i0,1]
-    j <- E$rec_IJKK1AG[i0,2]
-    k <- E$rec_IJKK1AG[i0,3]
-    k1 <- E$rec_IJKK1AG[i0,4]
-    a <- E$rec_IJKK1AG[i0,5]
-    a1 <- min(a+E$rec_lags[i0], A)
-    g <- E$rec_IJKK1AG[i0,6]
-    
-    #P[i0] <- P[i0]*( Fs[k1,j,a1,g]*(1-S[k1,j,a1])/(Fs_sumOverG[k1,j,a1]+M_jak) )  #U_a1gjk part
-    
-    if(E$rec_lags[i0]==0) P[i0] <- P[i0]*Pi[k,k1,a1,j] 
+   for(m0 in 1:E$ntag){ # this is equivalent to for(i in 1:I){for(a in 1:A){for(k in 1:K) above 
+     i <- E$tag_dbIAK[m0,1]
+     a <- E$tag_dbIAK[m0,2]
+     k <- E$tag_dbIAK[m0,3] 
      
-    if(E$rec_lags[i0]>0){
-     for(j0 in 0:(E$rec_lags[i0]-1)){
+     #******** We don't need to calculate P at gjk where there is no fishing efforts in real data, because catch_effort=0 -> U=0 -> P=0
+#     for(g in 1:G){for(j in i:J){for(k1 in 1:K1){#loop gjk starts
+#      ind2 <- which(cat_gjk_raw==paste(g,j,k1,sep='_')) 
+#      if(length(ind2)>0){ 
+    for(m1 in 1:E$ncat){ # this is equivalent to for(g in 1:G){for(k1 in 1:K1){for(j in i:J) above
+      g <- E$cat_KJG[m1,3] 
+      j <- E$cat_KJG[m1,2]  
+      k1 <- E$cat_KJG[m1,1]
+      if(j>=i){
+      
+       a1 <- min( a+ (j-i), A )
+       i1 <- 1 #if(j<=4) i1 <- 1 else i1 <- 2
+       if(k1<=3) i2 <- 1 else if(k1<=5) i2 <- 2 else if(k1<=8) i2 <- 3 else if(k1==9) i2 <- 4 else i2 <- 5
+       delta_gjk0 <- E$cat_delta_gjk[m1] #[ind2]
+       phi_ij <- phiFun( (j - i)*12 + 1 )
+       P[i,a,k,g,j,k1] <- phi_ij*(delta_gjk0+(1-delta_gjk0)*lambda_jk[i1,i2])
+       P[i,a,k,g,j,k1] <- P[i,a,k,g,j,k1] * Fs[k1,j,a1,g] *(1-S[k1,j,a1])/(Fs_sumOverG[k1,j,a1]+M_jak[k1,j,a1])  
+         
+     if(j==i) P[i,a,k,g,j,k1] <- P[i,a,k,g,j,k1]*Pi[k,k1,a1,j] 
+     if(j>i){
+         lags0 <- j-i
+     for(j0 in 0:(lags0-1)){
        a0 <- min(a+j0,A)
        if(model==1){
          if(j0==0) Delta_iaj <- Pi[,,a0,i+j0] %*% diag(S[,i+j0,a0])
          else Delta_iaj <- Delta_iaj %*% (Pi[,,a0,i+j0] %*% diag(S[,i+j0,a0]) )
-       }
+       }  
        if(model==2){
          if(j0==0) Delta_iaj <- diag(as.vector(Pi[,,a0,i+j0] %*% S[,i+j0,a0]))
          else Delta_iaj <- diag(as.vector( Delta_iaj %*% (Pi[,,a0,i+j0] %*% S[,i+j0,a0]) ))       
        }
      }
      Delta_iaj <- Delta_iaj %*% Pi[,,min(a0+1, A), j] 
-     P[i0] <- P[i0] * Delta_iaj[k,k1] 
+     P[i,a,k,g,j,k1] <- P[i,a,k,g,j,k1] * Delta_iaj[k,k1] 
     }
-    
-  }
-  #--------------------------------------------
-  #print(mean(P))  
-     
-#  par(mfrow=c(1,2), mar=c(2,2,.2,0)+.3,mgp=c(1.1,.2,0), tck=-0.01, cex.axis=.8, cex.lab=.9, cex.main=1)
-#  hist(foo2$P1, xlab='Model 1',main='',prob=F, col='lightblue')
-#  hist(foo2$P2, xlab='Model 2',main='',prob=F, col='lightgreen')
+             
+   #} }}} ##loop gjk ends
+   }}
+   
+ #} }}}  #loop iak ends 
+ }
+ 
+  tmpP = apply(P, c(1:3),'sum')
+  loglik[1] <- sum(E$rec_R*log(P[E$ind_rec_i6])) + sum(E$tag_noRec*log(1-tmpP[E$ind_tag_i6]))
   
+ } #************  compute L1 ends
+ 
   
-  #### # check if merging correctly
-  #tmp <- foo2
-  #tmp$gjk <-  paste(lev$rec[[4]][as.integer(substr(tmp$gjk,1,1))],lev$rec[[5]][as.integer(substr(tmp$gjk,3,3))], lev$rec[[6]][as.integer(substr(tmp$gjk,5,10L))] ,sep='_') 
-  #write.csv(file='tmp.csv', tmp)
-  
-  tmp <- aggregate(P, list(E$rec_iak), 'sum'); names(tmp) <- c('iak','P')
-  
-  Rs <- cbind(E$rec_R,E$rec_delta_gjk,E$rec_phi_ij,lambda_jk[E$ind_rec_JK]); Ts <- E$tag_noRec; Ps <- P 
-  ind_rec_KJAG <- E$ind_rec_KJAG
-  save(file=paste('m',model,sep=''),Rs=Rs,Ts=Ts,Ps=Ps,ind_rec_KJAG=ind_rec_KJAG)  
-    
-  #foo3 <- merge(x=foo, y=foo3, by='iak', all=T)
-  #foo3$P[is.na(foo3$P)] <- 0
-  #foo3$RlogP[is.na(foo3$RlogP)] <- 0
-  
-  # avoid using merge
-  #RlogP <- c(tmp$RlogP,0)[E$ind_rec2tag]
-  tmpP <- c(tmp$P,0)[E$ind_rec2tag]
-  
-  #loglik[1] <- sum(RlogP + E$tag_noRec*log(1-P))
-  loglik[1] <- sum(E$rec_R*log(P)) + sum(E$tag_noRec*log(1-tmpP))
-  
- } 
-  
-  
- if(any(comp==2)){
-  #============================ compute L2
+ if(any(comp==2)){ #************  compute L2 starts
   lambda <- lambda_jk[E$ind_cat_JK]
-  delta <- E$cat_delta_gjk[E$ind_cat_positive]      
-  
-  loglik[2] <- sum( 
-    E$cat_R_um[E$ind_cat_positive]*log(lambda) - E$cat_R_tot[E$ind_cat_positive]*log(delta + (1-delta)*lambda)
-    )
- } 
+  delta <- E$cat_delta_gjk[E$ind_cat_positive]     
+  loglik[2] <- sum(  E$cat_R_um[E$ind_cat_positive]*log(lambda) - E$cat_R_tot[E$ind_cat_positive]*log(delta + (1-delta)*lambda) )
+ } #************  compute L2 ends
   
   
- if(any(comp==3)){
-  #============================ compute L_CT 
+ if(any(comp==3)){ #************  compute L_CT starts
+  
   N <- array(NA, c(K0,J,A))
   for(j in 1:J) for(k in 1:K0) N[k,j,1] <- R_kj[k,j]
   for(a in 2:A) for(k in 1:K0) N[k,1,a] <- N0_ak[k,a-1]
@@ -163,64 +143,30 @@ getLogLik <- function(x, E, comp=c(1:4), model=1){
     for(k in 1:K0)
      N[k,j,a] <- sum(N[k,j-1,a-1]*Pi[k,,a-1,j-1]*S[,j-1,a-1])
   
-  
-  tmp <- E$cat_KJG
   EC <- array(0, c(K1,J,G,A))
+  tmp <- E$cat_KJG
   l_ct <- 0
-  tmp$sEC <- rep(NA, nrow(tmp))
   for(i0 in 1:nrow(tmp)){
     j <- tmp$year[i0]
     k1 <- tmp$basin[i0]
     g <- tmp$gear[i0]
-    
     EC[k1,j,g,] <- Fs[k1,j,,g]*(1-S[k1,j,])/(Fs_sumOverG[k1,j,]+M_jak[k1,j,]) * colSums(N[,j,]*Pi[1:K0,k1,,j])
     sEC <- log(sum(EC[k1,j,g,]))
-    
-    #VC <- (nu[g,j,k1]*sEC)^2
-    
-    # 2016-7-14
     VC <- log(nu[g,j,k1]^2 + 1)
-    
     l_ct <- l_ct - 0.5*(log(VC) + (E$log_cat_catch[i0]-sEC)^2/VC)
-    tmp$sEC[i0] <- sEC
   }
-  
   loglik[3] <- l_ct
- } 
- 
- 
- 
- 
- if(any(comp==3)){ 
-  #============================ compute L_CP
   
-#  tmp <- dat$age
-#  tmp$logE <- rep(NA, nrow(tmp))
-#  for(i0 in 1:nrow(tmp)){
-#   k1 <- tmp$rec_basin[i0]
-#   j <- tmp$year[i0]
-#   g <- tmp$gear[i0]
-#   a <- tmp$agep[i0]
-#   tmp$logE[i0] <- log( EC[k1,j,g,a]/sum(EC[k1,j,g,]) )
-#   }
-#   
-#  loglik[4] <- sum( tmp$n_sum*tmp$p_perc*tmp$logE )  #l_cp
-  
+ }#************  compute L_CT ends 
+ 
+ 
+ if(any(comp==3)){ #************  compute L_CP starts
   sumEC <- apply(EC, c(1:3), 'sum')
   tmp <- EC[E$ind_age_KJGA]/sumEC[E$ind_age_KJG]
   inds <- which(tmp>0)
-  
-  loglik[4] <- sum( E$age_n_gjka[inds]*log(tmp[inds]) )  #l_cp 
-  
-  #sum( age_n_gjka*log(dat$age$p_perc) ) 
-  
- } 
+  loglik[4] <- sum( E$age_n_gjka[inds]*log(tmp[inds]) )
+ } #************  compute L_CP ends
    
-  return(loglik) 
-  #return(-sum(loglik))
-  
-  #loglik <- as.data.frame(loglik)
-  #row.names(loglik) <- c('l1_1','l1_2','l2') 
-  #return(loglik)
+ return(loglik)  
 }
-#============================ define Loglikelihood starts
+#============================ define Loglikelihood ends

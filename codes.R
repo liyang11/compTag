@@ -42,12 +42,19 @@ a <- getLogLik(x,E,comp=1:4,model=1)
 as.character(a)
 L0 <- sum(a)
 ##-sum(a)
-tmp <- E; tmp <- tmp[-which(names(tmp)=='rec_levels')]
-#writeMat('Drq2m1p1.mat', E=tmp, x=x, L0=L0)
 
+#*********  save real data
+tmp <- E; tmp <- tmp[-which(names(tmp)=='rec_levels')]
+writeMat(paste('Drq',opt_q,'m',opt_M,'p',opt_Pi,'.mat',sep=''), E=tmp, x=x, L0=L0)
+
+
+
+
+#*********  save simulation data
 nsim <- 1
-for(repl in 1:nsim){
-cat(repl,' '); if(!repl%%20) cat('\n') 
+for(repl in 1:nsim){ #******** simulate data starts
+cat(repl,' '); if(!repl%%20) cat('\n')
+ 
 # simulation
 source('simuData.R')
 seeds <- repl*10
@@ -57,19 +64,19 @@ E1 <- simuData(x,E,seeds)
 source('getLogLik.R')
 a1 <- getLogLik(x,E1,comp=1:4,model=1)
 as.character(a1)
--sum(a1)
+sum(a1)
 
 source('getLogLik.R')
 a2 <- getLogLik(x,E1,comp=1:4,model=2)
 as.character(a2)
--sum(a2)
+sum(a2)
 
 L1 <- sum(a1)
 
 tmp <- E1; tmp <- tmp[-which(names(tmp)=='rec_levels')]
 writeMat(paste('Ds',repl,'q',opt_q,'m',opt_M,'p',opt_Pi,'.mat',sep=''), E=tmp, x=x, L0=L1)
 
-}
+} #******** simulate data ends
 
 cputime <- as.numeric(proc.time()[3]-ptm)
 cputime <- cputime/60

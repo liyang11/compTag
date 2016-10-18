@@ -4,7 +4,6 @@ function [loglik] = getLogLik(x, E, comp, model)
 paras = mat2cell(x, 1, E.dims);
 
 lambda_jk = reshape(paras{1}, [E.J2, E.K2]);
-if E.J2 == 1; lambda_jk = lambda_jk'; end
 
 q_jk = exp(paras{2});
 if E.parametrizations(1)==1; q_jk = q_jk*ones(E.J,E.K1); end
@@ -53,40 +52,82 @@ loglik = zeros(1,4);
 %% compute likelihood 1
 if any(comp==1)
     %============================ compute L1
-    P = E.rec_phi_ij.*(E.rec_delta_gjk+(1-E.rec_delta_gjk).*lambda_jk(E.ind_rec_JK));
-    %-------------------- compute P using model 1
-    P = P.*( Fs(E.ind_rec_KJAG).*(1-S(E.ind_rec_KJA))./...
-        (Fs_sumOverG(E.ind_rec_KJA)+M_jak(E.ind_rec_KJA)) );
-    for i0 = 1:E.nrec
-        i = E.rec_IJKK1AG(i0,1); j = E.rec_IJKK1AG(i0,2); k = E.rec_IJKK1AG(i0,3); 
-        k1 = E.rec_IJKK1AG(i0,4); a = E.rec_IJKK1AG(i0,5);
-        a1 = min( a+ E.rec_lags(i0), E.A );
-        
-        if E.rec_lags(i0)==0;
-            P(i0) = P(i0)*Pi(k,k1,a1,j);
-        else
-            for j0 = 0:(E.rec_lags(i0)-1)
-                a0 = min(a+j0, E.A);
-                if model == 1
-                    if j0==0; Delta_iaj = Pi(1:E.K0,:,a0,i+j0) * diag(S(:,i+j0,a0)) ;
-                    else Delta_iaj = Delta_iaj * (Pi(:,:,a0,i+j0) * diag(S(:,i+j0,a0)) ); end
-                elseif model == 2
-                    if j0==0; Delta_iaj = diag( Pi(1:E.K0,:,a0,i+j0) *S(:,i+j0,a0) ) ;
-                    else Delta_iaj = diag( Delta_iaj * (Pi(1:E.K0,:,a0,i+j0) * S(:,i+j0,a0)) ); end
+    P = zeros(E.I,E.A,E.K,E.G,E.J,E.K1);
+    for m0 = 1:E.ntag %only need for cases with released fish, otherwise both R and T_noRec are 0
+        i = E.tag_dbIAK(m0,1); a = E.tag_dbIAK(m0,2); k = E.tag_dbIAK(m0,3); 
+        for m1 = 1:E.ncat % only need for cases with catching efforts, otherwise P=0
+            g = E.cat_KJG(m1,3); j = E.cat_KJG(m1,2); k1 = E.cat_KJG(m1,1);
+            if j >= i 
+                a1 = min( a+ j-i, E.A );
+                i1 =1;
+                if k1<=3; i2 = 1; elseif k1<=5; i2 = 2; elseif k1<=8; i2 = 3; elseif k1==9; i2 = 4; else i2 = 5; end
+                delta_gjk0 = E.cat_delta_gjk(m1); 
+                phi_ij = phiFun( (j - i)*12 + 1 );
+                P(i,a,k,g,j,k1) = phi_ij*(delta_gjk0+(1-delta_gjk0)*lambda_jk(i1,i2));
+                P(i,a,k,g,j,k1) = P(i,a,k,g,j,k1) * Fs(k1,j,a1,g) *(1-S(k1,j,a1))/(Fs_sumOverG(k1,j,a1)+M_jak(k1,j,a1));
+                if j==i
+                    P(i,a,k,g,j,k1) = P(i,a,k,g,j,k1)*Pi(k,k1,a1,j);
+                else
+                    for j0 = 0:(j-i-1)
+                        a0 = min(a+j0, E.A);
+                        if model == 1
+                            if j0==0; Delta_iaj = Pi(1:E.K0,:,a0,i+j0) * diag(S(:,i+j0,a0)) ;
+                            else Delta_iaj = Delta_iaj * (Pi(:,:,a0,i+j0) * diag(S(:,i+j0,a0)) ); end
+                        elseif model == 2
+                            if j0==0; Delta_iaj = diag( Pi(1:E.K0,:,a0,i+j0) *S(:,i+j0,a0) ) ;
+                            else Delta_iaj = diag( Delta_iaj * (Pi(1:E.K0,:,a0,i+j0) * S(:,i+j0,a0)) ); end
+                        end
+                    end
+                    if model == 1; Delta_iaj = Delta_iaj * Pi(:,:,min(a0+1, E.A), j);
+                    elseif model == 2; Delta_iaj = Delta_iaj * Pi(1:E.K0,:,min(a0+1, E.A), j); end
+                    P(i,a,k,g,j,k1) = P(i,a,k,g,j,k1) * Delta_iaj(k,k1);
                 end
             end
-            if model == 1; Delta_iaj = Delta_iaj * Pi(:,:,min(a0+1, E.A), j); 
-            elseif model == 2; Delta_iaj = Delta_iaj * Pi(1:E.K0,:,min(a0+1, E.A), j); end
-            P(i0) = P(i0) * Delta_iaj(k,k1);
         end
     end
-    tmpP = [accumarray(E.rec_iak, P); 0];    
-    loglik(1) = sum(E.rec_R.*log(P)) + sum( E.tag_noRec.*log(1-tmpP(E.ind_rec2tag)) );
+    tmpP = sum(sum(sum(P,6),5),4);
+    loglik(1) = sum(E.rec_R.*log(P(E.ind_rec_i6)))   +   sum(E.tag_noRec.*log(1-tmpP(E.ind_tag_i6))); 
+    
+    
+    %*** old code which is wrong, miss some P values for no-recapture
+    % ** we shall not use one single for loop for E.nrec. Rather, we need
+    % two loops for E.ntag and E.ncat respectively. See new codes above
+    % 
+    %     P = E.rec_phi_ij.*(E.rec_delta_gjk+(1-E.rec_delta_gjk).*lambda_jk(E.ind_rec_JK));
+    %     %-------------------- compute P using model 1
+    %     P = P.*( Fs(E.ind_rec_KJAG).*(1-S(E.ind_rec_KJA))./...
+    %         (Fs_sumOverG(E.ind_rec_KJA)+M_jak(E.ind_rec_KJA)) );
+    %     for i0 = 1:E.nrec
+    %         i = E.rec_IJKK1AG(i0,1); j = E.rec_IJKK1AG(i0,2); k = E.rec_IJKK1AG(i0,3);
+    %         k1 = E.rec_IJKK1AG(i0,4); a = E.rec_IJKK1AG(i0,5);
+    %         a1 = min( a+ E.rec_lags(i0), E.A );
+    %
+    %         if E.rec_lags(i0)==0;
+    %             P(i0) = P(i0)*Pi(k,k1,a1,j);
+    %         else
+    %             for j0 = 0:(E.rec_lags(i0)-1)
+    %                 a0 = min(a+j0, E.A);
+    %                 if model == 1
+    %                     if j0==0; Delta_iaj = Pi(1:E.K0,:,a0,i+j0) * diag(S(:,i+j0,a0)) ;
+    %                     else Delta_iaj = Delta_iaj * (Pi(:,:,a0,i+j0) * diag(S(:,i+j0,a0)) ); end
+    %                 elseif model == 2
+    %                     if j0==0; Delta_iaj = diag( Pi(1:E.K0,:,a0,i+j0) *S(:,i+j0,a0) ) ;
+    %                     else Delta_iaj = diag( Delta_iaj * (Pi(1:E.K0,:,a0,i+j0) * S(:,i+j0,a0)) ); end
+    %                 end
+    %             end
+    %             if model == 1; Delta_iaj = Delta_iaj * Pi(:,:,min(a0+1, E.A), j);
+    %             elseif model == 2; Delta_iaj = Delta_iaj * Pi(1:E.K0,:,min(a0+1, E.A), j); end
+    %             P(i0) = P(i0) * Delta_iaj(k,k1);
+    %         end
+    %     end
+    %     tmpP = [accumarray(E.rec_iak, P); 0];
+    %     loglik(1) = sum(E.rec_R.*log(P)) + sum( E.tag_noRec.*log(1-tmpP(E.ind_rec2tag)) );
+    
 end
 
 %% compute likelihood 2
 if any(comp==2)
-    lambda = lambda_jk(E.ind_cat_JK);
+    lambda = lambda_jk(E.ind_cat_JK)';
     delta = E.cat_delta_gjk(E.ind_cat_positive, :);
     loglik(2) = sum(    E.cat_R_um(E.ind_cat_positive).*log(lambda) -  ...
         E.cat_R_tot(E.ind_cat_positive).*log( delta + (1-delta).*lambda )   );
@@ -103,8 +144,8 @@ if any(comp==3)
     
     %useinds = find(E.cat(:,3) <= E.K0)'; 
     l_ct = 0.0;
-    for i0 = 1:E.ncat %useinds
-        j = E.cat_KJG(i0,2); k1 = E.cat_KJG(i0,1); g = E.cat_KJG(i0,3);
+    for m0 = 1:E.ncat %useinds
+        j = E.cat_KJG(m0,2); k1 = E.cat_KJG(m0,1); g = E.cat_KJG(m0,3);
         EC(k1,j,g,:) = squeeze( Fs(k1,j,:,g).*(1-S(k1,j,:))./(Fs_sumOverG(k1,j,:)+M_jak(k1,j,:)) .*...
             sum(N(:,j,:).*Pi(1:E.K0,k1,:,j),1) );
         mu = log(sum(EC(k1,j,g,:)));
@@ -112,7 +153,7 @@ if any(comp==3)
         %VC = (nu(g,j,k1)*mu)^2;
         VC = log(nu(g,j,k1)^2+1);
         
-        l_ct = l_ct - 0.5*(log(VC) + (E.log_cat_catch(i0)-mu)^2/VC);
+        l_ct = l_ct - 0.5*(log(VC) + (E.log_cat_catch(m0)-mu)^2/VC);
     end
     loglik(3) = l_ct;
     
@@ -125,4 +166,8 @@ end
 
 %%
 % loglik = sum(loglik);
+end
+
+function [y] = phiFun(x)
+y = 1-0.31./(1+exp(8.52-double(x))); 
 end

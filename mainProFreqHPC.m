@@ -3,7 +3,7 @@ function [] = mainProFreqHPC(ID)
 repl = str2double(num2str(ID));
 
 modID = 2;  
-load(strcat('Ds',num2str(repl),'q2m1p1.mat'));
+load(strcat('Ds',num2str(repl),'q1m1p1.mat'));
 A = []; b = []; Aeq = []; beq = []; nonlcon = [];
 lbs = E.lbs;
 ubs = E.ubs;

@@ -232,14 +232,25 @@ if(k1<=3) i2 <- 1 else if(k1<=5) i2 <- 2 else if(k1<=8) i2 <- 3 else if(k1==9) i
  
  Rs <- as.data.frame(Rs); names(Rs) <- c('i','a','k','g','j','k1','R','phi','delta')  # this is simulated rec data
  
- print(dim(Rs))
+ #print(dim(Rs))
  
  
- all(Rs$R>0)
+ #all(Rs$R>0)
  Ts <- as.data.frame(Ts); names(Ts) <- c('i','a','k','tag_tot','tag_noRec')  # this is simulated tag data (basically the observed)
  
- sum(Ts[,ncol(Ts)]>0)
- sum(E$tag_noRec>0)
+ #sum(Ts[,ncol(Ts)]>0)
+ #sum(E$tag_noRec>0)
+     
+     
+ind_tag_i6 <- rep(NA, nrow(Ts))
+for(i0 in 1:nrow(Ts)){ #********* vectorize for tag data
+  i <- Ts$i[i0]
+  a <- Ts$a[i0]
+  k <- Ts$k[i0]
+  tmp1 <- array(0, c(I,A,K)); tmp1[i,a,k] <- 1 # to match P
+  ind_tag_i6[i0] <- which(tmp1==1) 
+}
+E$ind_tag_i6 <- ind_tag_i6    
      
  # now match aggregated rec to tag
  # match rec+cat data to tag data by iak
@@ -266,14 +277,14 @@ if(k1<=3) i2 <- 1 else if(k1<=5) i2 <- 2 else if(k1<=8) i2 <- 3 else if(k1==9) i
   all(Ts$R == c(tmp$R,0)[ind_rec2tag]) # see how this trick works
   
   tag_noRec <- Ts$tag_noRec
-  save(file='true',Rs=Rs,Ts=Ts,Ps=Ps,ind_rec_KJAG=ind_rec_KJAG,tag_noRec=tag_noRec,ind_rec2tag=ind_rec2tag)
+  #save(file='true',Rs=Rs,Ts=Ts,Ps=Ps,ind_rec_KJAG=ind_rec_KJAG,tag_noRec=tag_noRec,ind_rec2tag=ind_rec2tag)
   
   
   
   # vectorization to avoid for loops
   rec_lags <- Rs$j - Rs$i 
  # vectorize multiple indices for rec+cat data to avoid for loop
-ind_rec_KJAG <- ind_rec_KJA <- ind_rec_JK <- rep(NA, nrow(Rs)) #ind_rec_KKAJ <- : I believe we no longer need it
+ind_rec_KJAG <- ind_rec_KJA <- ind_rec_JK <- ind_rec_i6 <- rep(NA, nrow(Rs)) #ind_rec_KKAJ <- : I believe we no longer need it
 for(i0 in 1:nrow(Rs)){
   i <- Rs$i[i0]
   j <- Rs$j[i0]
@@ -291,6 +302,8 @@ for(i0 in 1:nrow(Rs)){
   ind_rec_KJAG[i0] <- which(tmp1==1)
   tmp1 <- array(0, c(K1,J,A)); tmp1[k1,j,a1] <- 1
   ind_rec_KJA[i0] <- which(tmp1==1) 
+  tmp1 <- array(0, c(I,A,K,G,J,K1)); tmp1[i,a,k,g,j,k1] <- 1 # to match P
+  ind_rec_i6[i0] <- which(tmp1==1)
 #  tmp1 <- array(0, c(K,K1,A,J)); tmp1[k,k1,a1,j] <- 1
 #  ind_rec_KKAJ[i0] <- which(tmp1==1)
 }
@@ -300,6 +313,7 @@ for(i0 in 1:nrow(Rs)){
   E$tag_noRec <- Ts$tag_noRec
   E$tag_iak <- iak_tag
   E$ind_rec2tag <- ind_rec2tag
+  E$ntag <- nrow(Ts)
   E$nrec <- nrow(Rs)
   E$rec_R <- Rs$R
   E$rec_IJKK1AG <- Rs[,c('i','j','k','k1','a','g')]
@@ -310,6 +324,7 @@ for(i0 in 1:nrow(Rs)){
   E$ind_rec_KJAG <- ind_rec_KJAG
   E$ind_rec_KJA <- ind_rec_KJA
   E$ind_rec_JK <- ind_rec_JK
+  E$ind_rec_i6 <- ind_rec_i6
   #************************************************************
   
   # calculate R_tot, R_m at rec data level. note this is not actually observed, we only observed sum of them for each gjk, not iakgjk.

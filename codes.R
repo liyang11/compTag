@@ -1,5 +1,8 @@
 
-rm(list=ls())
+#rm(list=ls())
+
+repl <- as.numeric(commandArgs(TRUE))
+print(repl)
 
 require(R.matlab)
 require(truncnorm) 
@@ -44,15 +47,15 @@ L0 <- sum(a)
 ##-sum(a)
 
 #*********  save real data
-tmp <- E; tmp <- tmp[-which(names(tmp)=='rec_levels')]
-writeMat(paste('Drq',opt_q,'m',opt_M,'p',opt_Pi,'.mat',sep=''), E=tmp, x=x, L0=L0)
+#tmp <- E; tmp <- tmp[-which(names(tmp)=='rec_levels')]
+#writeMat(paste('Drq',opt_q,'m',opt_M,'p',opt_Pi,'.mat',sep=''), E=tmp, x=x, L0=L0)
 
 
 
 
 #*********  save simulation data
-nsim <- 1
-for(repl in 1:nsim){ #******** simulate data starts
+nsim <- 50
+#for(repl in 1:nsim){ #******** simulate data starts
 cat(repl,' '); if(!repl%%20) cat('\n')
  
 # simulation
@@ -76,7 +79,7 @@ L1 <- sum(a1)
 tmp <- E1; tmp <- tmp[-which(names(tmp)=='rec_levels')]
 writeMat(paste('Ds',repl,'q',opt_q,'m',opt_M,'p',opt_Pi,'.mat',sep=''), E=tmp, x=x, L0=L1)
 
-} #******** simulate data ends
+#} #******** simulate data ends
 
 cputime <- as.numeric(proc.time()[3]-ptm)
 cputime <- cputime/60
@@ -87,17 +90,45 @@ cat('\nCPUtime', round(cputime,3), 'minutes: completed!','\n')
 
 
 
-simpleSummary <- FALSE
+simpleSummary <- FALSE  # summary for simulation
 if(simpleSummary){
-  repl <- 1
-  #x1 <- readMat('out1.mat')$xtmp
-  x2 <- readMat('paras1.mat')
-  #mat <- as.data.frame(cbind(x,as.vector(x1),x2,E$lbs,E$ubs))
-  mat <- as.data.frame(cbind(x2$mat,E$lbs,E$ubs))
-  row.names(mat) <- E$nams
-  names(mat) <- c('initial','estB','estB_l','estB_u','lbs','ubs') #'estF',
-  write.csv(file='paraF.csv',mat)
-  print('done')
+ require(R.matlab)
+ nsim <- 50
+ for(m in 1:2){
+  for(i in 1:nsim){
+   a <- readMat(paste('out',m,'_',i,'.mat',sep=''))
+   b <-  a$matpara; b <- t(rbind(apply(b,2,mean),apply(b,2,quantile,c(0.025,0.975))))
+   if(i==1&&m==1) tmp <- t(a$x0)
+   if(i==1) ms <- rs <- cp <- matrix(0,nsim,np <- length(a$x0))
+   ms[i,] <- b[,1]
+   rs[i,] <- (b[,1]-a$x0)^2
+   cp[i,] <- b[,2]<a$x0 & b[,3]>a$x0
+  }
+  sds <- apply(ms,2,'sd')
+  ms <- colMeans(ms) # posterior mean averaging over nsim replications
+  rs <- sqrt(colMeans(rs)) # RMSE
+  cp <- colMeans(cp) # Coverage proability
+  tmp <- cbind(tmp,ms,sds,rs,cp)
+ }
+ 
+ # get nams
+ opt_q <- 1 #catchability: 1=q, 2=qj, 3=qk, 4=qjk
+ opt_M <- 1 #natural mortality: 1=M, 2=Mj, 3=Ma, 4=Mk 
+ opt_Pi <- 1 #dynamic: 1=Pi, 2=Pi_a
+ parametrizations <- c(opt_q,opt_M,opt_Pi)
+ names(parametrizations) <- c('q(1=q,2=qj,3=qk)','M(1=M,2=Mj,3=Ma,4=Mk)','Pi(1=Pi,2=Pi_a)')
+ source('readData.R')  # read data into environmental var. E
+ E <- readData()
+ E$parametrizations <- parametrizations
+ source('initPara.R')  # initialize parameter 
+ x <- initPara(E)
+ nams <- x$nams 
+  
+ tmp <- as.data.frame(tmp); names(tmp) <- c("True", paste("Model",rep(c(1,2),each=4), '_',
+  rep(c('Mean','std','RMSE','CP'),2), sep='')); row.names(tmp) <- nams
+ write.csv(file='outS.csv',tmp)
+ mean(tmp$Model2_CP >= tmp$Model1_CP)
+ mean(tmp$Model2_RMSE <= tmp$Model1_RMSE)
 }
 
 

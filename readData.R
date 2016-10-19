@@ -73,6 +73,8 @@ for(i in 1:nd){
  }
 }
 
+save(file='lev',lev=lev)
+
 #all(dat$rec$rec_Y >= dat$rec$tag_Y)
 
 lapply(dat, 'head')

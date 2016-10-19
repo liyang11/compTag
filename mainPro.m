@@ -2,13 +2,14 @@ function [] = mainPro(ID)
 % main function for Bayesian estimates
 %% basic setup
 % tot = 3e4; burn = 25e3; 
-tot = 6e3; burn = 5e3; 
-% tot = 200; burn = 100; 
+% tot = 6e3; burn = 5e3; 
+tot = 2e3; burn = 1e3; 
+% tot = 50; burn = 0; 
 objrate = 0.44;
 reportrate = 1; verbose = 1;
 
 %% decipher job identifier
-nChain = 201;  % set number of MCMC runs
+nChain = 51;  % set number of MCMC runs
 ch = str2double(num2str(ID));  ch0 = ch; 
 nvar = ceil(ch/nChain); ch = ch - (nvar-1)*nChain;
 
@@ -39,14 +40,14 @@ loglike = sum(getLogLik(x, E, 1:3, nvar));
 
 %% adaptive MCMC setup
 batchLen = 50; 
-accepts = zeros(1,nx); batchNum = 0; batchTot = tot/batchLen; rates = zeros(batchTot, nx);
-tunings = -5*ones(1,nx); %initial tuning
-% accepts = zeros(1,np); batchNum = 0; batchTot = tot/batchLen; rates = zeros(batchTot, np);
-% tunings =-3*ones(1,np); %initial tuning
-% tunings([4, 6]) = -6; 
-% tunings(7:8) = -[6.5, 5]; 
-% tunings([2,3]) = -5; 
-% tunings(1) = -1; 
+% accepts = zeros(1,nx); batchNum = 0; batchTot = tot/batchLen; rates = zeros(batchTot, nx);
+% tunings = -5*ones(1,nx); %initial tuning
+accepts = zeros(1,np); batchNum = 0; batchTot = tot/batchLen; rates = zeros(batchTot, np);
+tunings =-5*ones(1,np); %initial tuning
+tunings([4, 6]) = -6; 
+tunings(7:8) = -[6.5, 5]; 
+tunings([2,3]) = -5; 
+tunings(1) = -1; 
 
 %% run MCMC
 matpara = zeros(tot-burn, nx); Ls =zeros(1, tot-burn); 
@@ -66,7 +67,7 @@ for iter = 1:tot
 %     end
     
     for k0 = 1:np
-        if any([1:6,8] == k0) % do not update nu0
+        if any([1:8] == k0) % do not update nu0
             k = find(E.flags == k0);  %updateFlags(k0)
             %         if k0==6 && nvar == 2 %updateFlags(k0)==6
             %             k = Hinds;
@@ -89,16 +90,16 @@ for iter = 1:tot
         accepts = accepts/batchLen;
         rates(batchNum,:) = accepts;
         tunings = tunings + sign((accepts>objrate)-0.5).*min(0.01,1/sqrt(batchNum));
-        accepts = zeros(1,nx);
+        accepts = zeros(1,np);
     end
 end
 runtime = toc/3600;
 fprintf('\n%d iterations are done with elapsed time %.2f hours.\n', tot, runtime)
 
-plot(matpara(:,E.flags==5))
-mean(exp(matpara(:,E.flags==5)))
+% plot(matpara(:,E.flags==5))
+% mean(exp(matpara(:,E.flags==5)))
 
-save(strcat('out',num2str(nvar),'_',num2str(ch),'.mat'),'runtime','matpara','Ls','rates','x0')
+save(strcat('out',num2str(nvar),'_',num2str(ch),'.mat'),'runtime','matpara','Ls','rates','x0','x')
 end
 
 function [y] = logit(x, a, b)
